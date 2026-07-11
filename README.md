@@ -24,8 +24,11 @@ glowmotion is the merge of two earlier experiments:
   (systems, topologies, nested boundaries), plus Mermaid input
   (`flowchart`/`graph`, `stateDiagram-v2`) with verbatim-label fidelity
   checking.
-- **Three themes** — `midnight` (deep navy / emerald), `neon` (black canvas,
-  lanshu green/purple/cyan/amber, grain + vignette), `aurora` (teal/violet).
+- **Light/dark toggle, built in** — every file ships both a dark and a light
+  palette and a ☀/☾ button; it opens on the viewer's OS preference and switches
+  live (all colors are CSS variables, so one flip repaints CSS + SVG together).
+  Dark palettes: `midnight` (navy/emerald), `neon` (black canvas,
+  green/purple/cyan/amber), `aurora` (teal/violet). Light palette: `daylight`.
 - **A real animation layer** — flowing dashed connectors, per-journey glow
   dots with trails, staggered pulsing halos on the nodes a request touches.
 - **Determinism + verification** — the engine owns every coordinate; the

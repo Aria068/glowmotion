@@ -22,7 +22,11 @@ Write `graph.json` to a temp path (`$TMPDIR`/`mktemp`), never the output folder.
 ```json
 {
   "mode": "flow | architecture",
-  "theme": "midnight | neon | aurora",
+  "darkTheme": "midnight | neon | aurora",
+  "lightTheme": "daylight",
+  "defaultMode": "auto | dark | light",
+  "themeToggle": true,
+  "theme": "(legacy single-theme key; still switchable — see Themes)",
   "title": "short header title",
   "titleHighlight": "capsule phrase (optional; renders as a colored pill after the title)",
   "subtitle": "one-line description under the title (optional)",
@@ -85,15 +89,34 @@ Write `graph.json` to a temp path (`$TMPDIR`/`mktemp`), never the output folder.
   `semStroke`/`semDash` preserve a source classDef stroke variant; pair them
   with a matching `legendExtra` entry.
 
-## Themes
+## Themes — light/dark switchable by default
 
-| theme | canvas | vibe | finish |
+Every rendered file ships **both** a dark and a light palette plus a **☀/☾
+toggle** (top-right). All colors are CSS custom properties, so the toggle
+repaints the CSS *and* the inline SVG in one attribute flip — no re-render. The
+file opens following the viewer's OS `prefers-color-scheme` unless pinned.
+
+Keys:
+- `darkTheme` (default `midnight`) — dark slot.
+- `lightTheme` (default `daylight`) — light slot.
+- `defaultMode` — `auto` (follow OS, default) | `dark` | `light`. Use `light`
+  when the user asks for a light diagram.
+- `themeToggle` — `true` (default). Set `false` to bake ONE fixed theme (from
+  `theme` or `darkTheme`), no button, no light palette. Grain/vignette finish
+  only appears in this single-theme mode (they can't co-switch onto light).
+- `theme` (legacy) — a single key; a light value fills the light slot, a dark
+  one the dark slot; the other slot defaults. Still switchable.
+
+| theme | slot | canvas | vibe |
 |---|---|---|---|
-| `midnight` | deep navy `#020617` | emerald flow, cyan dots — clean docs look | none |
-| `neon` | pure black `#000` | lanshu green/purple/cyan/amber, high drama | grain + vignette |
-| `aurora` | deep slate `#030712` | teal/violet borealis | vignette |
+| `midnight` | dark | deep navy `#020617` | emerald flow, cyan dots — clean docs look |
+| `neon` | dark | pure black `#000` | lanshu green/purple/cyan/amber, high drama |
+| `aurora` | dark | deep slate `#030712` | teal/violet borealis |
+| `daylight` | light | soft blue-grey `#e8eef5` | saturated 600-weight strokes, print-friendly |
 
-Unknown theme falls back to `midnight` with a stderr notice; invalid color/dash
+Unknown theme falls back (dark→`midnight`, light→`daylight`) with a stderr
+notice; a light theme named in `darkTheme` (or vice-versa) is routed to the
+correct slot automatically. Invalid color/dash
 tokens fall back to engine defaults the same way (fail-safe-to-render). A
 structurally invalid graph (unknown edge endpoint, group parent cycle, missing
 ids) fails fast with a readable list instead (fail-closed).

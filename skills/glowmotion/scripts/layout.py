@@ -166,6 +166,32 @@ THEMES = {
         },
         "grain": False, "vignette": True,
     },
+    "daylight": {  # light — soft blue-grey paper, saturated 600-weight strokes
+        "is_light": True,
+        "bg": "#e8eef5", "grid": "#d3dded", "card_bg": "#f8fafc",
+        "border": "#cbd5e1", "border_hi": "#94a3b8",
+        "text": "#0f172a", "subtext": "#64748b", "legend_text": "#475569",
+        "footer": "#94a3b8",
+        "flow_node_fill": "rgba(5,150,105,0.08)", "flow_node_stroke": "#059669",
+        "flow_pill_fill": "rgba(4,120,87,0.12)", "flow_pill_stroke": "#047857",
+        "flow_conn": "#059669", "flow_dot": "#059669",
+        "arch_conn": "#64748b", "arch_async": "#ea580c", "arch_auth": "#e11d48",
+        "arch_dot": "#0891b2",
+        "node_base": "#ffffff",
+        "region": "#d97706", "subnet": "#e11d48",
+        "capsule_fill": "rgba(8,145,178,0.12)", "capsule_text": "#0e7490",
+        "accents": ["#0891b2", "#7c3aed", "#e11d48", "#059669"],
+        "type_style": {
+            "frontend": ("rgba(8,145,178,0.10)", "#0891b2", "frontend"),
+            "backend":  ("rgba(5,150,105,0.10)", "#059669", "service"),
+            "database": ("rgba(124,58,237,0.10)", "#7c3aed", "data"),
+            "cloud":    ("rgba(217,119,6,0.10)", "#d97706", "cloud infra"),
+            "security": ("rgba(225,29,72,0.10)", "#e11d48", "security"),
+            "bus":      ("rgba(234,88,12,0.10)", "#ea580c", "message bus"),
+            "external": ("rgba(100,116,139,0.10)", "#64748b", "external"),
+        },
+        "grain": False, "vignette": False,
+    },
 }
 DEFAULT_THEME = "midnight"
 
@@ -491,7 +517,11 @@ class Layout:
         self.summary = graph.get("summary")   # [{accent, title, items:[...]}]
         self.footer = graph.get("footer")
         # glowmotion additions — theme + premium-finish knobs
-        self.theme = graph.get("theme")               # validated in render()
+        self.theme = graph.get("theme")               # legacy single-theme key
+        self.dark_theme = graph.get("darkTheme")      # switchable pair (dark slot)
+        self.light_theme = graph.get("lightTheme")    # switchable pair (light slot)
+        self.theme_toggle = graph.get("themeToggle", True)  # ship both + toggle
+        self.default_mode = graph.get("defaultMode", "auto")  # auto|dark|light
         self.title_highlight = graph.get("titleHighlight")  # capsule phrase
         self.signature = graph.get("signature")       # optional @byline
         self.icons = graph.get("icons", True)         # arch type glyphs
@@ -875,31 +905,46 @@ FONT_STACK = ("'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', "
               "Menlo, Consolas, monospace")
 
 
-def build_css(T, maxw, pulse):
-    a0, a1, a2 = T["accents"][0], T["accents"][1], T["accents"][2]
+def build_palette_css(dark_T, light_T, mode, toggle):
+    """The :root custom-property blocks that drive every color. When `toggle`,
+    both palettes ship and switch on `[data-theme]` / prefers-color-scheme; the
+    SVG and CSS below reference only var(--*), so one attribute flip repaints
+    the whole file. When not `toggle`, only the dark_T block is emitted."""
+    dark = theme_var_block(dark_T, mode)
+    if not toggle:
+        return f":root {{ {dark} }}\n"
+    light = theme_var_block(light_T, mode)
+    return (
+        f":root {{ {dark} }}\n"
+        f":root[data-theme=\"light\"] {{ {light} }}\n"
+        f"@media (prefers-color-scheme: light) {{ "
+        f":root:not([data-theme]) {{ {light} }} }}\n")
+
+
+def build_css(maxw):
     return f"""
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{ font-family: {FONT_STACK}; background: {T['bg']};
-         min-height: 100vh; padding: 2rem; color: {T['text']}; }}
+  body {{ font-family: {FONT_STACK}; background: {cv('bg')};
+         min-height: 100vh; padding: 2rem; color: {cv('text')}; }}
   .container {{ max-width: {maxw}px; margin: 0 auto; }}
   .header {{ display: flex; align-items: center; gap: 12px; margin-bottom: 0.4rem; }}
-  .pulse-dot {{ width: 10px; height: 10px; border-radius: 50%; background: {pulse}; }}
+  .pulse-dot {{ width: 10px; height: 10px; border-radius: 50%; background: {cv('pulse')}; }}
   h1 {{ font-size: 1.25rem; font-weight: 600; letter-spacing: -0.02em; }}
-  .capsule {{ display: inline-block; background: {T['capsule_fill']}; color: {T['capsule_text']};
-    border: 1px solid {T['capsule_text']}; border-radius: 999px; padding: 0 14px;
+  .capsule {{ display: inline-block; background: {cv('capsule_fill')}; color: {cv('capsule_text')};
+    border: 1px solid {cv('capsule_text')}; border-radius: 999px; padding: 0 14px;
     margin-left: 10px; font-size: 1.05rem; line-height: 1.75; }}
-  .sig {{ margin-left: auto; color: {T['text']}; font-size: 0.85rem; font-weight: 600;
-    text-shadow: -1px 1px 0 {a1}59, 1px -1px 0 {a0}59; }}
-  .subtitle {{ color: {T['subtext']}; font-size: 0.8rem; margin-bottom: 1.5rem; }}
-  .diagram-card {{ border: 1px solid {T['border']}; border-radius: 12px; position: relative;
-    background: repeating-linear-gradient(0deg, {T['grid']} 0 0.5px, transparent 0.5px 40px),
-      repeating-linear-gradient(90deg, {T['grid']} 0 0.5px, transparent 0.5px 40px), {T['card_bg']};
+  .sig {{ margin-left: auto; color: {cv('text')}; font-size: 0.85rem; font-weight: 600;
+    text-shadow: -1px 1px 0 {cv('accent_1')}, 1px -1px 0 {cv('accent_0')}; opacity: 0.85; }}
+  .subtitle {{ color: {cv('subtext')}; font-size: 0.8rem; margin-bottom: 1.5rem; }}
+  .diagram-card {{ border: 1px solid {cv('border')}; border-radius: 12px; position: relative;
+    background: repeating-linear-gradient(0deg, {cv('grid')} 0 0.5px, transparent 0.5px 40px),
+      repeating-linear-gradient(90deg, {cv('grid')} 0 0.5px, transparent 0.5px 40px), {cv('card_bg')};
     padding: 1.25rem 1rem; }}
-  .pause-btn {{ position: absolute; top: 12px; right: 12px; z-index: 2; background: transparent;
-    border: 1px solid {T['border']}; color: {T['subtext']}; border-radius: 6px; padding: 4px 10px;
-    font: inherit; font-size: 11px; cursor: pointer; }}
-  .pause-btn:hover {{ color: {T['text']}; border-color: {T['border_hi']}; }}
-  .footer {{ color: {T['footer']}; font-size: 0.7rem; margin-top: 1rem; }}
+  .ctrls {{ position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 6px; }}
+  .ctrl {{ background: transparent; border: 1px solid {cv('border')}; color: {cv('subtext')};
+    border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 11px; cursor: pointer; }}
+  .ctrl:hover {{ color: {cv('text')}; border-color: {cv('border_hi')}; }}
+  .footer {{ color: {cv('footer')}; font-size: 0.7rem; margin-top: 1rem; }}
   .flow {{ stroke-dasharray: 5 5; }}
   .flow-async {{ stroke-dasharray: 2 4; }}
   .flow-auth {{ stroke-dasharray: 4 4; }}
@@ -921,34 +966,55 @@ def build_css(T, maxw, pulse):
 """
 
 
-def build_css_cards(T):
-    a0, a1, a2 = T["accents"][0], T["accents"][1], T["accents"][2]
+def build_css_cards():
     return f"""
   .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1rem; margin-top: 1.25rem; }}
-  .card {{ border: 1px solid {T['border']}; border-radius: 10px; background: {T['card_bg']}; padding: 1rem 1.1rem; }}
+  .card {{ border: 1px solid {cv('border')}; border-radius: 10px; background: {cv('card_bg')}; padding: 1rem 1.1rem; }}
   .card-header {{ display: flex; align-items: center; gap: 8px; margin-bottom: 0.6rem; }}
   .card-dot {{ width: 8px; height: 8px; border-radius: 50%; }}
-  .card-dot.cyan {{ background: {a0}; }} .card-dot.violet {{ background: {a1}; }}
-  .card-dot.rose {{ background: {a2}; }}
+  .card-dot.cyan {{ background: {cv('accent_0')}; }} .card-dot.violet {{ background: {cv('accent_1')}; }}
+  .card-dot.rose {{ background: {cv('accent_2')}; }}
   .card h3 {{ font-size: 0.8rem; font-weight: 600; }}
-  .card ul {{ list-style: none; }} .card li {{ font-size: 0.72rem; color: {T['legend_text']}; line-height: 1.7; }}
+  .card ul {{ list-style: none; }} .card li {{ font-size: 0.72rem; color: {cv('legend_text')}; line-height: 1.7; }}
 """
 
 
 SCRIPT = """
 <script>
 (function () {
+  // Theme toggle — flips [data-theme] on <html>; all colors are CSS vars, so
+  // one attribute change repaints CSS and inline SVG together. Independent of
+  // reduced-motion, so it is wired first and always.
+  var root = document.documentElement;
+  var tbtn = document.getElementById('themeBtn');
+  if (tbtn) {
+    var mq = matchMedia('(prefers-color-scheme: light)');
+    var cur = function () {
+      return root.getAttribute('data-theme') || (mq.matches ? 'light' : 'dark');
+    };
+    var sync = function () {
+      var c = cur();
+      tbtn.textContent = c === 'light' ? '\\u263e dark' : '\\u2600 light';
+      tbtn.setAttribute('aria-label', 'Switch to ' + (c === 'light' ? 'dark' : 'light') + ' theme');
+    };
+    tbtn.addEventListener('click', function () {
+      root.setAttribute('data-theme', cur() === 'light' ? 'dark' : 'light');
+      sync();
+    });
+    mq.addEventListener && mq.addEventListener('change', sync);
+    sync();
+  }
   var svg = document.getElementById('flowsvg');
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     document.querySelectorAll('.dot, .trail').forEach(function (d) { d.remove(); });
     var b = document.getElementById('pauseBtn'); if (b) b.remove(); return;
   }
-  var btn = document.getElementById('pauseBtn'); var paused = false;
+  var btn = document.getElementById('pauseBtn'); if (!btn) return; var paused = false;
   btn.addEventListener('click', function () {
     paused = !paused; document.body.classList.toggle('paused', paused);
     paused ? svg.pauseAnimations() : svg.unpauseAnimations();
-    btn.textContent = paused ? '▶ play' : '⏸ pause';
+    btn.textContent = paused ? '\\u25b6 play' : '\\u23f8 pause';
     btn.setAttribute('aria-pressed', String(paused));
   });
 })();
@@ -1016,30 +1082,32 @@ def build_defs(icons_on, grain, vignette, effects):
     return "".join(defs)
 
 
-def _node_text_svg(n, T):
+def _node_text_svg(n):
     parts = []
     cx = n.cx
+    tf = f'style="fill:{cv("text")}"'
+    sf = f'style="fill:{cv("subtext")}"'
     if n.sublabel:  # arch component: label + sublabel
         ly = n.y + (n.h - 18) / 2 + 4
         if len(n.lines) == 1:
-            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ly)}" fill="{T["text"]}" '
+            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ly)}" {tf} '
                          f'font-size="13" font-weight="500">{esc(n.lines[0])}</text>')
         else:
-            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ly-7)}" fill="{T["text"]}" '
+            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ly-7)}" {tf} '
                          f'font-size="13" font-weight="500">'
                          f'<tspan x="{fmt(cx)}">{esc(n.lines[0])}</tspan>'
                          f'<tspan x="{fmt(cx)}" dy="15">{esc(n.lines[1])}</tspan></text>')
-        parts.append(f'<text x="{fmt(cx)}" y="{fmt(n.y2-10)}" fill="{T["subtext"]}" '
+        parts.append(f'<text x="{fmt(cx)}" y="{fmt(n.y2-10)}" {sf} '
                      f'font-size="10">{esc(n.sublabel)}</text>')
     else:
         weight = "600" if n.shape == "pill" else "500"
         if len(n.lines) == 1:
             ty = n.cy + 4
-            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ty)}" fill="{T["text"]}" '
+            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ty)}" {tf} '
                          f'font-size="13" font-weight="{weight}">{esc(n.lines[0])}</text>')
         else:
             ty = n.cy - 3
-            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ty)}" fill="{T["text"]}" '
+            parts.append(f'<text x="{fmt(cx)}" y="{fmt(ty)}" {tf} '
                          f'font-size="13" font-weight="{weight}">'
                          f'<tspan x="{fmt(cx)}">{esc(n.lines[0])}</tspan>'
                          f'<tspan x="{fmt(cx)}" dy="15">{esc(n.lines[1])}</tspan></text>')
@@ -1057,37 +1125,126 @@ def resolve_theme(name, warnings):
     return key, THEMES[key]
 
 
+DEFAULT_DARK = "midnight"
+DEFAULT_LIGHT = "daylight"
+
+# Scalar (single-color) theme keys, emitted verbatim as CSS custom properties.
+# type_style and accents expand into their own vars separately.
+_SCALAR_KEYS = [
+    "bg", "grid", "card_bg", "border", "border_hi", "text", "subtext",
+    "legend_text", "footer", "flow_node_fill", "flow_node_stroke",
+    "flow_pill_fill", "flow_pill_stroke", "flow_conn", "flow_dot",
+    "arch_conn", "arch_async", "arch_auth", "arch_dot", "node_base",
+    "region", "subnet", "capsule_fill", "capsule_text",
+]
+
+
+def cv(key):
+    """Reference a themed color as a CSS variable: 'flow_conn' -> var(--flow-conn)."""
+    return f"var(--{key.replace('_', '-')})"
+
+
+def type_fill_v(name):
+    return f"var(--t-{name}-fill)"
+
+
+def type_stroke_v(name):
+    return f"var(--t-{name}-stroke)"
+
+
+def accent_v(i):
+    return f"var(--accent-{i})"
+
+
+def theme_var_block(T, mode):
+    """Emit one theme's tokens as `--name: value;` declarations (no selector)."""
+    out = []
+    for k in _SCALAR_KEYS:
+        out.append(f"--{k.replace('_', '-')}:{T[k]};")
+    for name, (fill, stroke, _leg) in T["type_style"].items():
+        out.append(f"--t-{name}-fill:{fill};--t-{name}-stroke:{stroke};")
+    for i, a in enumerate(T["accents"]):
+        out.append(f"--accent-{i}:{a};")
+    out.append(f"--pulse:{T['flow_dot'] if mode == 'flow' else T['arch_dot']};")
+    return "".join(out)
+
+
+def resolve_palette(lo, warnings):
+    """Resolve the (dark, light) theme pair + toggle behavior for a switchable
+    file. `theme` (legacy single-theme key) is honored: a light theme routes to
+    the light slot, a dark one to the dark slot; the OTHER slot takes its
+    default so the file is still switchable unless `themeToggle: false`."""
+    def pick(name, warn_label):
+        if not name:
+            return None
+        k = str(name).strip().lower()
+        if k not in THEMES:
+            warnings.append(f"{warn_label}: unknown {name!r}; ignoring "
+                            f"(available: {', '.join(sorted(THEMES))})")
+            return None
+        return k
+
+    dark = pick(lo.dark_theme, "darkTheme")
+    light = pick(lo.light_theme, "lightTheme")
+    legacy = pick(lo.theme, "theme")
+    if legacy:
+        if THEMES[legacy].get("is_light"):
+            light = light or legacy
+        else:
+            dark = dark or legacy
+    # guard against a light theme landing in the dark slot (or vice versa)
+    if dark and THEMES[dark].get("is_light"):
+        light = light or dark
+        dark = None
+    if light and not THEMES[light].get("is_light"):
+        dark = dark or light
+        light = None
+    dark = dark or DEFAULT_DARK
+    light = light or DEFAULT_LIGHT
+
+    toggle = bool(lo.theme_toggle)
+    mode = str(lo.default_mode).strip().lower()
+    if mode not in ("auto", "dark", "light"):
+        warnings.append(f"defaultMode: unknown {lo.default_mode!r}; using auto")
+        mode = "auto"
+    return dark, light, toggle, mode
+
+
 def render(lo, geom):
     mode = lo.mode
     warnings = []
-    theme_name, T = resolve_theme(lo.theme, warnings)
+    dark_name, light_name, toggle, default_mode = resolve_palette(lo, warnings)
+    dark_T, light_T = THEMES[dark_name], THEMES[light_name]
     effects = bool(lo.effects)
-    grain = effects and T["grain"]
-    vignette = effects and T["vignette"]
+    # grain/vignette are dark-canvas garnish that can't co-switch cleanly onto a
+    # light palette — they are suppressed whenever the file is switchable (the
+    # new default). glow / trails / halos / sparkles read on both and stay.
+    grain = effects and (not toggle) and dark_T["grain"]
+    vignette = effects and (not toggle) and dark_T["vignette"]
     icons_on = bool(lo.icons) and mode != "flow"
     W = geom["width"]
     H = geom["height"]
 
     # boundaries (arch) first — static containers
     bound_svg = []
-    used_types = []
+    used_types = []          # type names, first-seen order (legend order)
     if mode != "flow":
         for g in lo.groups:
             if not g.box:
                 continue
             x, y, w, h = g.box
             if g.kind == "subnet":
-                stroke, dash, fs = T["subnet"], "4 4", 10
+                stroke, dash, fs = cv("subnet"), "4 4", 10
                 rx = 8
             else:
-                stroke, dash, fs = T["region"], "8 4", 11
+                stroke, dash, fs = cv("region"), "8 4", 11
                 rx = 12
             bound_svg.append(
                 f'<rect x="{fmt(x)}" y="{fmt(y)}" width="{fmt(w)}" height="{fmt(h)}" '
-                f'rx="{rx}" fill="none" stroke="{stroke}" stroke-width="1" '
+                f'rx="{rx}" fill="none" style="stroke:{stroke}" stroke-width="1" '
                 f'stroke-dasharray="{dash}" opacity="0.6" data-grp-id="{esc(g.id)}"/>')
             bound_svg.append(
-                f'<text x="{fmt(x+14)}" y="{fmt(y+18)}" fill="{stroke}" '
+                f'<text x="{fmt(x+14)}" y="{fmt(y+18)}" style="fill:{stroke}" '
                 f'font-size="{fs}" opacity="0.9">{esc(g.label)}</text>')
 
     # connectors
@@ -1098,12 +1255,12 @@ def render(lo, geom):
             continue
         d = to_d(e.pts)
         if mode == "flow":
-            stroke = T["flow_conn"]
+            stroke = cv("flow_conn")
             width = "1.5" if e.kind == "main" else "1"
             opacity = "0.85"
         else:
-            stroke = (T["arch_async"] if e.kind == "async"
-                      else T["arch_auth"] if e.kind == "auth" else T["arch_conn"])
+            stroke = (cv("arch_async") if e.kind == "async"
+                      else cv("arch_auth") if e.kind == "auth" else cv("arch_conn"))
             width = "1.5" if e.kind == "main" else "1"
             opacity = "1"
         cls = ("flow-async" if e.kind == "async"
@@ -1111,11 +1268,11 @@ def render(lo, geom):
                else "" if e.kind == "static" else "flow")
         marker = "" if e.kind == "static" else ' marker-end="url(#arrow)"'
         clsattr = f' class="{cls}"' if cls else ""
-        conn.append(f'<path{clsattr} d="{d}" stroke="{stroke}" '
+        conn.append(f'<path{clsattr} d="{d}" style="stroke:{stroke}" '
                     f'stroke-width="{width}" opacity="{opacity}"{marker}/>')
         if e.label and e.label_pos:
             lx, ly = e.label_pos
-            label_svg.append(f'<text x="{fmt(lx)}" y="{fmt(ly)}" fill="{T["subtext"]}" '
+            label_svg.append(f'<text x="{fmt(lx)}" y="{fmt(ly)}" style="fill:{cv("subtext")}" '
                              f'font-size="10">{esc(e.label)}</text>')
     conn.append('</g>')
 
@@ -1125,23 +1282,25 @@ def render(lo, geom):
         for note in n.loop_notes:
             lx = n.x2 + 8
             ly = n.cy + 4 + off
-            label_svg.append(f'<text x="{fmt(lx)}" y="{fmt(ly)}" fill="{T["subtext"]}" '
+            label_svg.append(f'<text x="{fmt(lx)}" y="{fmt(ly)}" style="fill:{cv("subtext")}" '
                              f'font-size="11">↻</text>')
             if note:
                 label_svg.append(f'<text x="{fmt(lx+14)}" y="{fmt(ly)}" '
-                                 f'fill="{T["subtext"]}" font-size="10">{esc(note)}</text>')
+                                 f'style="fill:{cv("subtext")}" font-size="10">{esc(note)}</text>')
             off += 15
 
     # journeys / dots — main dot gets the #glow filter; two `trail` circles ride
     # the SAME path 0.09s/0.18s behind at falling size/opacity (the lanshu comet).
-    # A journey without an explicit color takes the theme accent cycle, first
-    # journey matching the legend's "request in flight" dot.
+    # A journey without an explicit color takes the theme accent cycle (a CSS var
+    # so it re-tints on theme switch); the first journey matches the "request in
+    # flight" legend dot. An explicit color is a fixed literal in both modes.
     dot_svg = []
-    dot_defaults = ([T["flow_dot"]] if mode == "flow" else [T["arch_dot"]]) + T["accents"]
+    dot_default_vars = ([cv("flow_dot")] if mode == "flow" else [cv("arch_dot")]) \
+        + [accent_v(i) for i in range(len(dark_T["accents"]))]
     edge_d = {(e.src, e.dst): to_d(e.pts) for e in lo.edges if not e.is_loop}
     edge_pts = {(e.src, e.dst): e.pts for e in lo.edges if not e.is_loop}
     for ji, j in enumerate(lo.journeys):
-        color = safe_color(j.get("color"), dot_defaults[ji % len(dot_defaults)],
+        color = safe_color(j.get("color"), dot_default_vars[ji % len(dot_default_vars)],
                            f"journey {ji}", warnings)
         hops = [h for h in j.get("hops", []) if (h[0], h[1]) in edge_d]
         if not hops:
@@ -1159,13 +1318,13 @@ def render(lo, geom):
                       max(DOT_DUR_MIN, _poly_len(edge_pts[(a, b)]) / DOT_SPEED))
             filt = ' filter="url(#glow)"' if effects else ""
             dot_svg.append(
-                f'<circle r="3.5" class="dot" fill="{color}"{filt}>'
+                f'<circle r="3.5" class="dot" style="fill:{color}"{filt}>'
                 f'<animateMotion id="{mid}" dur="{dur:.1f}s" begin="{begin}" '
                 f'fill="freeze" path="{d}"/></circle>')
             if effects:
                 for r, op, lag in ((2.4, 0.5, 0.09), (1.7, 0.28, 0.18)):
                     dot_svg.append(
-                        f'<circle r="{r}" class="trail" fill="{color}" opacity="{op}">'
+                        f'<circle r="{r}" class="trail" style="fill:{color}" opacity="{op}">'
                         f'<animateMotion dur="{dur:.1f}s" begin="{mid}.begin+{lag}s" '
                         f'fill="freeze" path="{d}"/></circle>')
             prev_id = mid
@@ -1186,40 +1345,45 @@ def render(lo, geom):
             return ""
         delay = halo_order.index(n.id) * 0.6
         return (f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                f'height="{fmt(n.h)}" rx="{rx}" fill="none" stroke="{stroke}" '
+                f'height="{fmt(n.h)}" rx="{rx}" fill="none" '
                 f'stroke-width="2" class="halo" filter="url(#glow)" '
-                f'style="animation-delay:{delay:.1f}s"/>')
+                f'style="stroke:{stroke};animation-delay:{delay:.1f}s"/>')
 
     # nodes
     node_svg = []
-    type_style = T["type_style"]
+    type_style = dark_T["type_style"]   # geometry-independent; legend labels only
     for n in lo.nodes:
         if mode == "flow":
             if n.shape == "pill":
                 node_svg.append(
                     f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                    f'height="{fmt(n.h)}" rx="20" fill="{T["flow_pill_fill"]}" '
-                    f'stroke="{T["flow_pill_stroke"]}" stroke-width="1.5"/>')
-                node_svg.append(halo_rect(n, T["flow_pill_stroke"], 20))
+                    f'height="{fmt(n.h)}" rx="20" '
+                    f'style="fill:{cv("flow_pill_fill")};stroke:{cv("flow_pill_stroke")}" '
+                    f'stroke-width="1.5"/>')
+                node_svg.append(halo_rect(n, cv("flow_pill_stroke"), 20))
             elif n.shape == "decision":
                 node_svg.append(
                     f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                    f'height="{fmt(n.h)}" rx="8" fill="{T["flow_node_fill"]}" '
-                    f'stroke="{T["flow_node_stroke"]}" stroke-dasharray="4 3"/>')
-                node_svg.append(halo_rect(n, T["flow_node_stroke"], 8))
+                    f'height="{fmt(n.h)}" rx="8" '
+                    f'style="fill:{cv("flow_node_fill")};stroke:{cv("flow_node_stroke")}" '
+                    f'stroke-dasharray="4 3"/>')
+                node_svg.append(halo_rect(n, cv("flow_node_stroke"), 8))
             else:
                 node_svg.append(
                     f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                    f'height="{fmt(n.h)}" rx="8" fill="{T["flow_node_fill"]}" '
-                    f'stroke="{T["flow_node_stroke"]}"/>')
-                node_svg.append(halo_rect(n, T["flow_node_stroke"], 8))
-            node_svg.append(_node_text_svg(n, T))
+                    f'height="{fmt(n.h)}" rx="8" '
+                    f'style="fill:{cv("flow_node_fill")};stroke:{cv("flow_node_stroke")}"/>')
+                node_svg.append(halo_rect(n, cv("flow_node_stroke"), 8))
+            node_svg.append(_node_text_svg(n))
         else:
-            fill, stroke, leg = type_style.get(n.type or "external",
-                                               type_style["external"])
-            if leg not in [u[2] for u in used_types]:
-                used_types.append((fill, stroke, leg))
-            st = safe_color(n.sem_stroke, stroke, f"node {n.id} semStroke", warnings)
+            tname = n.type if n.type in type_style else "external"
+            if tname not in used_types:
+                used_types.append(tname)
+            # semStroke (explicit classDef retention) is a fixed literal; else the
+            # themed type stroke var (re-tints on switch).
+            st = safe_color(n.sem_stroke, type_stroke_v(tname),
+                            f"node {n.id} semStroke", warnings)
+            fillv = type_fill_v(tname)
             _nd = safe_dash(n.sem_dash, f"node {n.id} semDash", warnings)
             dash = f' stroke-dasharray="{_nd}"' if _nd else ""
             # group membership (resolved ancestor chain) for the C9 structural
@@ -1229,36 +1393,37 @@ def render(lo, geom):
             grp = esc(" ".join(sorted(lo._group_set(n))))
             node_svg.append(
                 f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                f'height="{fmt(n.h)}" rx="8" fill="{T["node_base"]}" data-grp="{grp}"/>')
+                f'height="{fmt(n.h)}" rx="8" style="fill:{cv("node_base")}" data-grp="{grp}"/>')
             node_svg.append(
                 f'<rect x="{fmt(n.x)}" y="{fmt(n.y)}" width="{fmt(n.w)}" '
-                f'height="{fmt(n.h)}" rx="8" fill="{fill}" stroke="{st}" '
+                f'height="{fmt(n.h)}" rx="8" style="fill:{fillv};stroke:{st}" '
                 f'stroke-width="1.5"{dash} data-grp="{grp}"/>')
             node_svg.append(halo_rect(n, st, 8))
             if icons_on and n.type in ICONS:
                 # <use> glyph: defs symbol, invisible to both checkers by design
                 node_svg.append(
                     f'<use href="#ic-{n.type}" x="{fmt(n.x+5)}" y="{fmt(n.y+6)}" '
-                    f'width="12" height="12" color="{st}" opacity="0.65"/>')
-            node_svg.append(_node_text_svg(n, T))
+                    f'width="12" height="12" style="color:{st}" opacity="0.65"/>')
+            node_svg.append(_node_text_svg(n))
 
     # legend (arch): below everything
     legend_svg = []
     if mode != "flow":
         ly = H - BOTTOM_PAD + 6
         lx = MARGIN
-        for (fill, stroke, leg) in used_types:
+        for tname in used_types:
+            leg = type_style[tname][2]
             legend_svg.append(
                 f'<rect x="{fmt(lx)}" y="{fmt(ly)}" width="12" height="12" rx="3" '
-                f'fill="{fill}" stroke="{stroke}"/>')
+                f'style="fill:{type_fill_v(tname)};stroke:{type_stroke_v(tname)}"/>')
             legend_svg.append(
-                f'<text x="{fmt(lx+18)}" y="{fmt(ly+10)}" fill="{T["legend_text"]}" '
+                f'<text x="{fmt(lx+18)}" y="{fmt(ly+10)}" style="fill:{cv("legend_text")}" '
                 f'font-size="11">{esc(leg)}</text>')
             lx += 22 + text_w(leg) + 28
         legend_svg.append(
-            f'<circle cx="{fmt(lx+6)}" cy="{fmt(ly+6)}" r="3.5" fill="{T["arch_dot"]}"/>')
+            f'<circle cx="{fmt(lx+6)}" cy="{fmt(ly+6)}" r="3.5" style="fill:{cv("arch_dot")}"/>')
         legend_svg.append(
-            f'<text x="{fmt(lx+16)}" y="{fmt(ly+10)}" fill="{T["legend_text"]}" '
+            f'<text x="{fmt(lx+16)}" y="{fmt(ly+10)}" style="fill:{cv("legend_text")}" '
             f'font-size="11">request in flight</text>')
         lx += 16 + text_w("request in flight") + 28
         # semantic classDef legend entries (preserved stroke variants)
@@ -1269,13 +1434,13 @@ def render(lo, geom):
                 _xlbl = ex.get("label", "?")
                 _xd = safe_dash(ex.get("dash"), f"legendExtra {_xlbl}", warnings)
                 exd = f' stroke-dasharray="{_xd}"' if _xd else ""
-                _xs = safe_color(ex.get("stroke"), T["legend_text"],
+                _xs = safe_color(ex.get("stroke"), cv("legend_text"),
                                  f"legendExtra {_xlbl}", warnings)
                 legend_svg.append(
                     f'<rect x="{fmt(lx)}" y="{fmt(ly2)}" width="12" height="12" '
-                    f'rx="3" fill="none" stroke="{_xs}"{exd}/>')
+                    f'rx="3" fill="none" style="stroke:{_xs}"{exd}/>')
                 legend_svg.append(
-                    f'<text x="{fmt(lx+18)}" y="{fmt(ly2+10)}" fill="{T["legend_text"]}" '
+                    f'<text x="{fmt(lx+18)}" y="{fmt(ly2+10)}" style="fill:{cv("legend_text")}" '
                     f'font-size="11">{esc(ex["label"])}</text>')
                 lx += 22 + text_w(ex["label"]) + 28
             H = H + 24
@@ -1310,11 +1475,11 @@ def render(lo, geom):
         svg.append('</g>')
     if effects:
         # corner sparkles — pure garnish, <use> so the checkers never see them
-        acc = T["accents"]
+        nacc = len(dark_T["accents"])
         for si, (sx, sy) in enumerate([(10, 8), (W - 24, 12),
                                        (8, H - 24), (W - 28, H - 28)]):
             svg.append(f'<use href="#sparkle" x="{fmt(sx)}" y="{fmt(sy)}" '
-                       f'width="12" height="12" color="{acc[si % len(acc)]}" '
+                       f'width="12" height="12" style="color:{accent_v(si % nacc)}" '
                        f'opacity="0.35"/>')
     # premium finish: grain + vignette are full-bleed scenery rects painted last
     # (check_diagram excludes ~full-viewBox rects from its box set by design)
@@ -1326,11 +1491,10 @@ def render(lo, geom):
                    f'fill="url(#vig)"/>')
     svg.append('</svg>')
 
-    pulse = T["flow_dot"] if mode == "flow" else T["arch_dot"]
     maxw = 960 if mode == "flow" else 1100
-    css = build_css(T, maxw, pulse)
+    css = build_palette_css(dark_T, light_T, mode, toggle) + build_css(maxw)
     if mode != "flow":
-        css += build_css_cards(T)
+        css += build_css_cards()
     cards = ""
     if mode != "flow":
         if lo.summary:
@@ -1364,11 +1528,22 @@ def render(lo, geom):
     cap = (f'<span class="capsule">{esc(lo.title_highlight)}</span>'
            if lo.title_highlight else "")
     sig = f'<div class="sig">{esc(lo.signature)}</div>' if lo.signature else ""
+    # initial theme: auto -> follow OS (no attribute); dark/light -> pinned
+    html_attr = "" if (not toggle or default_mode == "auto") \
+        else f' data-theme="{default_mode}"'
+    theme_btn = ('<button class="ctrl" id="themeBtn" aria-label="Switch theme">'
+                 '☀ light</button>') if toggle else ""
+    if toggle:
+        pair = f"{dark_name} / {light_name} · switchable"
+    else:
+        pair = f"{dark_name} theme"
+    footer = lo.footer if lo.footer else f"glowmotion · {mode} mode · {pair}"
     html = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en"{html_attr}>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="{'light dark' if toggle else 'dark'}">
 <title>{esc(lo.title)} — glowmotion</title>
 <style>{css}</style>
 </head>
@@ -1377,11 +1552,11 @@ def render(lo, geom):
   <div class="header"><div class="pulse-dot"></div><h1>{esc(lo.title)}{cap}</h1>{sig}</div>
   <p class="subtitle">{esc(lo.subtitle) if lo.subtitle else f"Animated {mode} diagram"}</p>
   <div class="diagram-card">
-    <button class="pause-btn" id="pauseBtn" aria-pressed="false">⏸ pause</button>
+    <div class="ctrls">{theme_btn}<button class="ctrl" id="pauseBtn" aria-pressed="false">⏸ pause</button></div>
     {''.join(svg)}
   </div>
   {cards}
-  <p class="footer">{esc(lo.footer) if lo.footer else f"glowmotion · {mode} mode · {theme_name} theme"}</p>
+  <p class="footer">{esc(footer)}</p>
 </div>
 {SCRIPT}
 </body>

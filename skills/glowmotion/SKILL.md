@@ -1,7 +1,7 @@
 ---
 name: glowmotion
-version: 0.1.0
-description: 'Create premium animated technical diagrams as single self-contained HTML+SVG files — flowcharts whose connectors visibly flow and architecture diagrams where requests travel as glowing comet dots with fading trails, pulsing module highlights, film-grain/vignette finish, and switchable color themes (midnight, neon, aurora). Use this skill whenever the user asks for a flowchart, workflow, pipeline, process diagram, state machine, system architecture, infrastructure, cloud, microservices, or network topology diagram — especially when they mention "animated", "glowing", "premium", "flowing", "dynamic", "alive", "GIF-like", or want a diagram for a landing page, README, docs, or product demo. Also converts Mermaid source (flowchart/graph and stateDiagram-v2) into an animated diagram. Prefer this over static output whenever the diagram represents anything that moves: requests, events, data, jobs, messages, or control flow.'
+version: 0.2.0
+description: 'Create premium animated technical diagrams as single self-contained HTML+SVG files — flowcharts whose connectors visibly flow and architecture diagrams where requests travel as glowing comet dots with fading trails, pulsing module highlights, and a built-in light/dark theme toggle (dark themes midnight/neon/aurora + light theme daylight). Use this skill whenever the user asks for a flowchart, workflow, pipeline, process diagram, state machine, system architecture, infrastructure, cloud, microservices, or network topology diagram — especially when they mention "animated", "glowing", "premium", "flowing", "dynamic", "alive", "GIF-like", "light mode", "dark mode", or want a diagram for a landing page, README, docs, or product demo. Also converts Mermaid source (flowchart/graph and stateDiagram-v2) into an animated diagram. Prefer this over static output whenever the diagram represents anything that moves: requests, events, data, jobs, messages, or control flow.'
 ---
 
 # Glowmotion
@@ -26,11 +26,25 @@ fallback: the engine owns all geometry.
 
 Mixed request → architecture; the animated journey *is* the flow.
 
-Themes (`"theme"` in the graph JSON): **midnight** (deep navy, emerald flow,
-cyan dots — the default), **neon** (pure-black canvas, green/purple/cyan/amber —
-the lanshu look, grain + vignette on), **aurora** (teal/violet on deep slate,
-vignette on). Pick by context: neon for landing-page drama, midnight for docs,
-aurora for data/ML topics — or ask the user if they showed a style preference.
+**Themes are light/dark switchable by default.** Every generated file ships
+*both* a dark and a light palette and a **☀/☾ toggle button** (top-right, next
+to pause); it opens following the viewer's OS `prefers-color-scheme`. You choose
+which two palettes pair up:
+
+- `darkTheme` (default **midnight**) — dark options: **midnight** (deep navy,
+  emerald flow), **neon** (pure-black canvas, green/purple/cyan/amber),
+  **aurora** (teal/violet on deep slate).
+- `lightTheme` (default **daylight**) — light options: **daylight** (soft
+  blue-grey paper, saturated strokes, print-friendly). *(only light theme today)*
+- `defaultMode`: `"auto"` (default, follow OS) | `"dark"` | `"light"` — which
+  side the file opens on. Set `"light"` when the user asks for a light diagram.
+- `themeToggle: false` — bake a single fixed theme (from `theme`/`darkTheme`),
+  no button. Only when the user explicitly wants one locked look.
+
+Legacy `theme` (single key) still works: a light value fills the light slot, a
+dark value the dark slot, the other slot takes its default — still switchable.
+Pick dark palettes by context: neon for landing-page drama, midnight for docs,
+aurora for data/ML topics.
 
 **Mermaid input** — if the request contains Mermaid source (```mermaid block,
 `.mmd` file, or pasted code): supported types are `flowchart`/`graph` and
@@ -56,8 +70,8 @@ engine does everything else. Full contract in `references/graph-format.md`
    folder — it is a throwaway intermediate.
 3. Render: `python3 <skill-dir>/scripts/layout.py graph.json --render
    <topic>-glowmotion.html`. The output is the complete deliverable: geometry,
-   theme, glow/trail/halo animation layer, icons, legend, cards, pause toggle,
-   reduced-motion handling, ARIA wiring.
+   both theme palettes + ☀/☾ toggle, glow/trail/halo animation layer, icons,
+   legend, cards, pause toggle, reduced-motion handling, ARIA wiring.
 
 To change anything, edit the JSON and re-render (cheap, deterministic); for a
 one-off wording tweak, edit the emitted HTML directly. Never hand-compute
@@ -87,7 +101,8 @@ python3 <skill-dir>/scripts/check_fidelity.py <source>.mmd <your-file>.html
 ```
 
 Deliver only after a clean pass. Tell the user the file opens directly in any
-browser, has a ⏯ pause button, and honors reduced-motion preferences.
+browser, has a ☀/☾ light-dark toggle and a ⏯ pause button, and honors
+reduced-motion preferences.
 
 ### GIF/MP4 export (only if asked)
 
@@ -99,5 +114,6 @@ seamlessly when all durations divide 3s.
 ## Output contract
 
 One self-contained `.html`: embedded CSS, inline SVG, no external assets, no
-JS dependencies beyond the ~15-line inline pause/reduced-motion script.
-Renders correctly opened from the filesystem, in light of the chosen theme.
+JS dependencies beyond the ~25-line inline theme/pause/reduced-motion script.
+Renders correctly opened from the filesystem, in light or dark per the viewer's
+preference (or the pinned `defaultMode`).
